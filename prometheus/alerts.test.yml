@@ -1,0 +1,103 @@
+
+rule_files:
+  - alerts.yml
+
+evaluation_interval: 15s
+
+tests:
+  - name: "API failure detection"
+    interval: 15s
+    input_series:
+      - series: 'up{job="deployment-tracker",instance="deployment-tracker:8080"}'
+        values: '0+0x48'
+
+    alert_rule_test:
+      - eval_time: 30s
+        alertname: DeploymentTrackerDown
+        exp_alerts: []
+
+      - eval_time: 2m
+        alertname: DeploymentTrackerDown
+        exp_alerts:
+          - exp_labels:
+              job: deployment-tracker
+              instance: deployment-tracker:8080
+              severity: critical
+            exp_annotations:
+              summary: "Deployment Tracker API is down"
+              description: "The API has been unreachable for more than 1 minute."
+
+  - name: "High error rate and resource usage"
+    interval: 15s
+    input_series:
+      - series: 'http_server_requests_seconds_count{job="deployment-tracker",status="500",uri="/api/health"}'
+        values: '0+3x48'
+
+      - series: 'http_server_requests_seconds_count{job="deployment-tracker",status="200",uri="/api/health"}'
+        values: '0+12x48'
+
+      - series: 'container_cpu_usage_seconds_total{job="cadvisor",cpu="total",container_label_com_docker_compose_project="monitoring-observability",container_label_com_docker_compose_service="deployment-tracker"}'
+        values: '0+15x48'
+
+      - series: 'container_memory_working_set_bytes{job="cadvisor",container_label_com_docker_compose_project="monitoring-observability",container_label_com_docker_compose_service="deployment-tracker"}'
+        values: '900000000+0x48'
+
+    alert_rule_test:
+      - eval_time: 10m
+        alertname: HighHTTP5xxErrorRate
+        exp_alerts:
+          - exp_labels:
+              severity: warning
+            exp_annotations:
+              summary: "High HTTP 5xx error rate"
+              description: "More than 5% of application requests are failing with 5xx errors."
+
+      - eval_time: 10m
+        alertname: HighContainerCPU
+        exp_alerts:
+          - exp_labels:
+              severity: warning
+            exp_annotations:
+              summary: "High container CPU usage"
+              description: "Deployment Tracker is using more than 0.8 CPU cores."
+
+      - eval_time: 10m
+        alertname: HighContainerMemory
+        exp_alerts:
+          - exp_labels:
+              severity: warning
+            exp_annotations:
+              summary: "High container memory usage"
+              description: "Deployment Tracker memory usage exceeds 800 MiB."
+
+  - name: "Normal conditions"
+    interval: 15s
+    input_series:
+      - series: 'up{job="deployment-tracker",instance="deployment-tracker:8080"}'
+        values: '1+0x48'
+
+      - series: 'http_server_requests_seconds_count{job="deployment-tracker",status="200",uri="/api/health"}'
+        values: '0+15x48'
+
+      - series: 'container_cpu_usage_seconds_total{job="cadvisor",cpu="total",container_label_com_docker_compose_project="monitoring-observability",container_label_com_docker_compose_service="deployment-tracker"}'
+        values: '0+3x48'
+
+      - series: 'container_memory_working_set_bytes{job="cadvisor",container_label_com_docker_compose_project="monitoring-observability",container_label_com_docker_compose_service="deployment-tracker"}'
+        values: '400000000+0x48'
+
+    alert_rule_test:
+      - eval_time: 10m
+        alertname: DeploymentTrackerDown
+        exp_alerts: []
+
+      - eval_time: 10m
+        alertname: HighHTTP5xxErrorRate
+        exp_alerts: []
+
+      - eval_time: 10m
+        alertname: HighContainerCPU
+        exp_alerts: []
+
+      - eval_time: 10m
+        alertname: HighContainerMemory
+        exp_alerts: []

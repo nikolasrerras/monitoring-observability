@@ -1,0 +1,104 @@
+
+services:
+  postgres:
+    image: postgres:17
+
+    environment:
+      POSTGRES_DB: deployment_tracker
+      POSTGRES_USER: deployment_tracker
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in .env}
+
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+
+    healthcheck:
+      test:
+        [
+          "CMD-SHELL",
+          "pg_isready -U deployment_tracker -d deployment_tracker"
+        ]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+    restart: unless-stopped
+
+  deployment-tracker:
+    image: deployment-tracker:local
+
+    ports:
+      - "127.0.0.1:8082:8080"
+
+    environment:
+      SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/deployment_tracker
+      SPRING_DATASOURCE_USERNAME: deployment_tracker
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in .env}
+
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+    restart: unless-stopped
+
+  prometheus:
+    image: prom/prometheus:v3.5.0
+
+    ports:
+      - "127.0.0.1:9090:9090"
+
+    volumes:
+      - ./prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - ./prometheus/alerts.yml:/etc/prometheus/alerts.yml:ro
+      - prometheus_data:/prometheus
+
+    depends_on:
+      - deployment-tracker
+
+    restart: unless-stopped
+
+  grafana:
+      image: grafana/grafana:12.2.0
+
+      ports:
+        - "127.0.0.1:3000:3000"
+
+      environment:
+        GF_SECURITY_ADMIN_USER: admin
+        GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_ADMIN_PASSWORD:?Set GRAFANA_ADMIN_PASSWORD in .env}
+        GF_USERS_ALLOW_SIGN_UP: "false"
+
+      volumes:
+        - grafana_data:/var/lib/grafana
+        - ./grafana/provisioning:/etc/grafana/provisioning:ro
+        - ./dashboards:/var/lib/grafana/dashboards:ro
+
+      depends_on:
+        - prometheus
+
+      restart: unless-stopped
+
+
+  cadvisor:
+    image: ghcr.io/google/cadvisor:v0.60.6
+
+    privileged: true
+
+    devices:
+      - /dev/kmsg
+
+    ports:
+      - "127.0.0.1:8083:8080"
+
+    volumes:
+      - /:/rootfs:ro
+      - /var/run:/var/run:ro
+      - /sys:/sys:ro
+      - /var/lib/docker:/var/lib/docker:ro
+      - /dev/disk:/dev/disk:ro
+
+    restart: unless-stopped
+
+volumes:
+  postgres_data:
+  prometheus_data:
+  grafana_data:

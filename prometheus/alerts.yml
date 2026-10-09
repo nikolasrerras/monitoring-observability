@@ -1,0 +1,67 @@
+
+groups:
+  - name: deployment-tracker-alerts
+    rules:
+      - alert: DeploymentTrackerDown
+        expr: up{job="deployment-tracker"} == 0
+        for: 1m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Deployment Tracker API is down"
+          description: "The API has been unreachable for more than 1 minute."
+
+      - alert: HighHTTP5xxErrorRate
+        expr: |
+          (
+            sum(rate(http_server_requests_seconds_count{
+              job="deployment-tracker",
+              status=~"5..",
+              uri!~"/actuator/.*"
+            }[5m]))
+            /
+            sum(rate(http_server_requests_seconds_count{
+              job="deployment-tracker",
+              uri!~"/actuator/.*"
+            }[5m]))
+          ) > 0.05
+          and
+          sum(increase(http_server_requests_seconds_count{
+            job="deployment-tracker",
+            uri!~"/actuator/.*"
+          }[5m])) > 20
+        for: 2m
+        labels:
+          severity: warning
+        annotations:
+          summary: "High HTTP 5xx error rate"
+          description: "More than 5% of application requests are failing with 5xx errors."
+
+      - alert: HighContainerCPU
+        expr: |
+          sum(rate(container_cpu_usage_seconds_total{
+            job="cadvisor",
+            cpu="total",
+            container_label_com_docker_compose_project="monitoring-observability",
+            container_label_com_docker_compose_service="deployment-tracker"
+          }[5m])) > 0.8
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "High container CPU usage"
+          description: "Deployment Tracker is using more than 0.8 CPU cores."
+
+      - alert: HighContainerMemory
+        expr: |
+          sum(container_memory_working_set_bytes{
+            job="cadvisor",
+            container_label_com_docker_compose_project="monitoring-observability",
+            container_label_com_docker_compose_service="deployment-tracker"
+          }) > 800 * 1024 * 1024
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "High container memory usage"
+          description: "Deployment Tracker memory usage exceeds 800 MiB."
